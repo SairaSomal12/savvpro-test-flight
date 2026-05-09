@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✈️ FlightHub - Flight Search & Booking System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>✈️ FlightHub</h1>
+                <p>Flight Search & Booking System</p>
+            </div>
+            <nav class="nav">
+                <button id="nav-search" class="nav-btn active" onclick="showTab('search')">Search Flights</button>
+                <button id="nav-bookings" class="nav-btn" onclick="showTab('bookings')">My Bookings</button>
+            </nav>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Search Tab -->
+            <section id="search-tab" class="tab active">
+                <div class="search-container">
+                    <h2>Search Flights</h2>
+                    <form id="search-form" class="search-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="origin">From (Origin)</label>
+                                <input type="text" id="origin" placeholder="e.g., ISB, LHE, KHI" maxlength="3" class="input-uppercase">
+                            </div>
+                            <div class="form-group">
+                                <label for="destination">To (Destination)</label>
+                                <input type="text" id="destination" placeholder="e.g., DXB, DOH, BKK" maxlength="3" class="input-uppercase">
+                            </div>
+                            <div class="form-group">
+                                <label for="departure-date">Departure Date</label>
+                                <input type="date" id="departure-date">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Search Flights</button>
+                    </form>
+                </div>
+
+                <!-- Results -->
+                <div id="search-results" class="results-container hidden">
+                    <h2>Available Flights</h2>
+                    <div id="flights-list" class="flights-grid">
+                        <!-- Flights will be inserted here -->
+                    </div>
+                </div>
+
+                <!-- No Results Message -->
+                <div id="no-results" class="message hidden">
+                    <p>No flights found. Try different search criteria.</p>
+                </div>
+
+                <!-- Loading State -->
+                <div id="loading" class="loading hidden">
+                    <p>Searching flights...</p>
+                </div>
+
+                <!-- Error Message -->
+                <div id="error-message" class="error-message hidden">
+                    <p id="error-text"></p>
+                </div>
+            </section>
+
+            <!-- Bookings Tab -->
+            <section id="bookings-tab" class="tab">
+                <div class="bookings-container">
+                    <h2>My Bookings</h2>
+                    
+                    <div class="bookings-search">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="booking-ref">Booking Reference</label>
+                                <input type="text" id="booking-ref" placeholder="e.g., BK-ABC123" class="input-uppercase">
+                            </div>
+                            <div class="form-group">
+                                <label for="passenger-name">Passenger Name</label>
+                                <input type="text" id="passenger-name" placeholder="Full name">
+                            </div>
+                        </div>
+                        <button onclick="searchBookings()" class="btn btn-primary">Search Bookings</button>
+                    </div>
+
+                    <div id="bookings-results" class="results-container hidden">
+                        <div id="bookings-list">
+                            <!-- Bookings will be inserted here -->
+                        </div>
+                    </div>
+
+                    <div id="bookings-loading" class="loading hidden">
+                        <p>Loading bookings...</p>
+                    </div>
+
+                    <div id="bookings-error" class="error-message hidden">
+                        <p id="bookings-error-text"></p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Booking Modal -->
+        <div id="booking-modal" class="modal hidden">
+            <div class="modal-content">
+                <button class="modal-close" onclick="closeBookingModal()">&times;</button>
+                
+                <h2>Book Flight</h2>
+                
+                <div id="flight-details" class="flight-details-modal">
+                    <!-- Flight info will be inserted here -->
+                </div>
+
+                <form id="booking-form" class="booking-form" onsubmit="submitBooking(event)">
+                    <div class="form-group">
+                        <label for="passenger-name-input">Passenger Full Name *</label>
+                        <input type="text" id="passenger-name-input" required placeholder="John Doe">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="passport-number">Passport Number *</label>
+                        <input type="text" id="passport-number" required placeholder="AB123456">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="seat-number">Seat Number *</label>
+                        <input type="number" id="seat-number" required placeholder="1" min="1">
+                    </div>
+
+                    <button type="submit" class="btn btn-success">Confirm Booking</button>
+                    <button type="button" onclick="closeBookingModal()" class="btn btn-secondary">Cancel</button>
+                </form>
+
+                <div id="booking-loading" class="loading hidden">
+                    <p>Processing booking...</p>
+                </div>
+
+                <div id="booking-error" class="error-message hidden">
+                    <p id="booking-error-text"></p>
+                </div>
+
+                <div id="booking-success" class="success-message hidden">
+                    <h3>✅ Booking Confirmed!</h3>
+                    <p id="booking-ref-display"></p>
+                    <button onclick="closeBookingModal()" class="btn btn-primary">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

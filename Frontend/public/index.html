@@ -26,22 +26,23 @@
             <section id="search-tab" class="tab active">
                 <div class="search-container">
                     <h2>Search Flights</h2>
+                    <p class="form-hint">Fill in any combination of fields or leave empty to see all available flights.</p>
                     <form id="search-form" class="search-form">
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="origin">From (Origin)</label>
+                                <label for="origin">From (Origin) - Optional</label>
                                 <input type="text" id="origin" placeholder="e.g., ISB, LHE, KHI" maxlength="3" class="input-uppercase">
                             </div>
                             <div class="form-group">
-                                <label for="destination">To (Destination)</label>
+                                <label for="destination">To (Destination) - Optional</label>
                                 <input type="text" id="destination" placeholder="e.g., DXB, DOH, BKK" maxlength="3" class="input-uppercase">
                             </div>
                             <div class="form-group">
-                                <label for="departure-date">Departure Date</label>
+                                <label for="departure-date">Departure Date - Optional</label>
                                 <input type="date" id="departure-date">
                             </div>
                         </div>
-                        <button type="submit" class="btn btn-primary">Search Flights</button>
+                        <button type="submit" class="btn btn-primary">Show All Flights</button>
                     </form>
                 </div>
 
@@ -73,11 +74,12 @@
             <section id="bookings-tab" class="tab">
                 <div class="bookings-container">
                     <h2>My Bookings</h2>
+                    <p class="form-hint">All your bookings are loaded automatically. Use the search below to filter by reference or passenger name.</p>
                     
                     <div class="bookings-search">
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="booking-ref">Booking Reference</label>
+                                <label for="booking-ref">Booking Reference (e.g., BK-ABC123)</label>
                                 <input type="text" id="booking-ref" placeholder="e.g., BK-ABC123" class="input-uppercase">
                             </div>
                             <div class="form-group">
@@ -94,6 +96,10 @@
                         </div>
                     </div>
 
+                    <div id="bookings-no-results" class="message hidden">
+                        <p>No bookings found.</p>
+                    </div>
+
                     <div id="bookings-loading" class="loading hidden">
                         <p>Loading bookings...</p>
                     </div>
@@ -104,6 +110,59 @@
                 </div>
             </section>
         </main>
+
+        <!-- Booking Detail Modal -->
+        <div id="booking-detail-modal" class="modal hidden">
+            <div class="modal-content">
+                <button class="modal-close" onclick="closeBookingDetailModal()">&times;</button>
+                <div class="booking-detail-header">
+                    <h2>Booking: <span id="detail-booking-ref"></span></h2>
+                    <span id="detail-status" class="booking-status"></span>
+                </div>
+                <div class="booking-info">
+                    <div class="info-group">
+                        <span class="label">Flight Route</span>
+                        <span class="value" id="detail-route"></span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Departure</span>
+                        <span class="value" id="detail-departure"></span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Duration</span>
+                        <span class="value" id="detail-duration"></span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Passenger Name</span>
+                        <span class="value" id="detail-passenger"></span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Passport Number</span>
+                        <span class="value" id="detail-passport"></span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Seat Number</span>
+                        <span class="value" id="detail-seat"></span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Price Per Seat</span>
+                        <span class="value" id="detail-price"></span>
+                    </div>
+                    <div class="info-group">
+                        <span class="label">Booked On</span>
+                        <span class="value" id="detail-booked-at"></span>
+                    </div>
+                    <div class="info-group hidden" id="detail-cancelled-row">
+                        <span class="label">Cancelled On</span>
+                        <span class="value" id="detail-cancelled-at"></span>
+                    </div>
+                </div>
+                <div class="detail-modal-actions">
+                    <button id="detail-cancel-btn" class="btn btn-danger hidden">Cancel Booking</button>
+                    <button class="btn btn-secondary" onclick="closeBookingDetailModal()">Close</button>
+                </div>
+            </div>
+        </div>
 
         <!-- Booking Modal -->
         <div id="booking-modal" class="modal hidden">

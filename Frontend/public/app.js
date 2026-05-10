@@ -6,6 +6,7 @@
 const API_BASE = '/api';
 let currentFlight = null;
 let currentSeatLimit = 0;
+let bookingsCache = {};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -29,17 +30,19 @@ document.addEventListener('DOMContentLoaded', () => {
  * Tab Navigation
  */
 function showTab(tabName) {
-    // Hide all tabs
     document.querySelectorAll('.tab').forEach(tab => {
-        tab.classList.add('hidden');
+        tab.classList.remove('active');
     });
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.classList.remove('active');
     });
-    
-    // Show selected tab
-    document.getElementById(tabName + '-tab').classList.remove('hidden');
+
+    document.getElementById(tabName + '-tab').classList.add('active');
     document.getElementById('nav-' + tabName).classList.add('active');
+
+    if (tabName === 'bookings') {
+        getAllBookings();
+    }
 }
 
 /**
@@ -52,13 +55,7 @@ document.getElementById('search-form')?.addEventListener('submit', async (e) => 
     const destination = document.getElementById('destination').value.trim();
     const departureDate = document.getElementById('departure-date').value;
     
-    if (!origin || !destination || !departureDate) {
-        showError('Please fill in all search fields');
-        return;
-    }
-    
-    // Convert date to yyyy-mm-dd format (HTML date input returns this format)
-    // departureDate is already in yyyy-mm-dd format from the input
+    // Call searchFlights with optional parameters
     await searchFlights(origin, destination, departureDate);
 });
 
@@ -74,15 +71,22 @@ async function searchFlights(origin, destination, departureDate) {
     errorDiv.classList.add('hidden');
     
     try {
-        const response = await fetch(`${API_BASE}/flights/search?origin=${origin}&destination=${destination}&departure_date=${departureDate}`);
+        // Build query string with only non-empty parameters
+        const params = new URLSearchParams();
+        if (origin) params.append('origin', origin);
+        if (destination) params.append('destination', destination);
+        if (departureDate) params.append('departure_date', departureDate);
+        
+        const queryString = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}/flights${queryString}`);
         const data = await response.json();
         
         if (!response.ok) {
             throw new Error(data.detail || 'Search failed');
         }
         
-        if (data.results && data.results.length > 0) {
-            displayFlights(data.results);
+        if (data.flights && data.flights.length > 0) {
+            displayFlights(data.flights);
             results.classList.remove('hidden');
         } else {
             noResults.classList.remove('hidden');
@@ -253,6 +257,54 @@ async function submitBooking(e) {
 }
 
 /**
+ * Get All Bookings
+ */
+async function getAllBookings() {
+    const loading = document.getElementById('bookings-loading');
+    const results = document.getElementById('bookings-results');
+    const errorDiv = document.getElementById('bookings-error');
+    const noResults = document.getElementById('bookings-no-results');
+    const bookingsContainer = document.getElementById('bookings-container');
+    
+    if (!loading || !results) {
+        console.error('Booking elements not found');
+        return;
+    }
+    
+    loading.classList.remove('hidden');
+    results.classList.add('hidden');
+    errorDiv.classList.add('hidden');
+    if (noResults) noResults.classList.add('hidden');
+    
+    try {
+        const response = await fetch(`${API_BASE}/bookings`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            // If 404, it means no bookings exist
+            if (response.status === 404) {
+                if (noResults) noResults.classList.remove('hidden');
+                loading.classList.add('hidden');
+                return;
+            }
+            throw new Error(data.detail || 'Failed to load bookings');
+        }
+        
+        if (data.bookings && data.bookings.length > 0) {
+            displayBookings(data, 'all');
+            results.classList.remove('hidden');
+        } else {
+            if (noResults) noResults.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Error fetching bookings:', error);
+        showBookingsError(error.message);
+    } finally {
+        loading.classList.add('hidden');
+    }
+}
+
+/**
  * Search Bookings
  */
 async function searchBookings() {
@@ -298,61 +350,105 @@ async function searchBookings() {
 }
 
 /**
- * Display Bookings
+ * Display Bookings (compact grid cards)
  */
 function displayBookings(data, type) {
     const container = document.getElementById('bookings-list');
     container.innerHTML = '';
-    
+    bookingsCache = {};
+
     const bookings = type === 'single' ? [data] : data.bookings;
-    
+
     bookings.forEach(booking => {
-        const bookingCard = document.createElement('div');
-        bookingCard.className = 'booking-card';
-        
+        bookingsCache[booking.booking_reference] = booking;
+
+        const card = document.createElement('div');
+        card.className = 'booking-card-compact';
+
         const departureTime = new Date(`2026-05-15T${booking.flight.departure_time}`);
         const timeString = departureTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        
-        bookingCard.innerHTML = `
-            <div class="booking-header">
-                <h3>Booking: ${booking.booking_reference}</h3>
+
+        card.innerHTML = `
+            <div class="compact-card-header">
+                <span class="compact-ref">${booking.booking_reference}</span>
                 <span class="booking-status ${booking.status === 'CANCELLED' ? 'cancelled' : 'confirmed'}">${booking.status}</span>
             </div>
-            
-            <div class="booking-info">
-                <div class="info-group">
-                    <span class="label">Flight</span>
-                    <span class="value">${booking.flight.origin} → ${booking.flight.destination}</span>
-                </div>
-                <div class="info-group">
-                    <span class="label">Date & Time</span>
+            <div class="compact-route">${booking.flight.origin} → ${booking.flight.destination}</div>
+            <div class="compact-details">
+                <div class="compact-detail-row">
+                    <span class="label">Departure</span>
                     <span class="value">${booking.flight.departure_date} at ${timeString}</span>
                 </div>
-                <div class="info-group">
+                <div class="compact-detail-row">
                     <span class="label">Passenger</span>
                     <span class="value">${booking.passenger_name}</span>
                 </div>
-                <div class="info-group">
+                <div class="compact-detail-row">
                     <span class="label">Seat</span>
-                    <span class="value">${booking.seat_number}</span>
-                </div>
-                <div class="info-group">
-                    <span class="label">Price</span>
-                    <span class="value">Rs. ${parseFloat(booking.flight.price_per_seat).toLocaleString()}</span>
+                    <span class="value">#${booking.seat_number}</span>
                 </div>
             </div>
-            
-            <div class="booking-actions">
+            <div class="compact-actions">
+                <button class="btn btn-info" onclick="reviewBooking('${booking.booking_reference}')">Review Details</button>
                 ${booking.status === 'CONFIRMED' ? `
-                    <button class="btn btn-danger" onclick="cancelBooking('${booking.booking_reference}')">
-                        Cancel Booking
-                    </button>
+                    <button class="btn btn-danger" onclick="cancelBooking('${booking.booking_reference}')">Cancel</button>
                 ` : ''}
             </div>
         `;
-        
-        container.appendChild(bookingCard);
+
+        container.appendChild(card);
     });
+}
+
+/**
+ * Review Booking — opens the detail modal
+ */
+function reviewBooking(bookingRef) {
+    const booking = bookingsCache[bookingRef];
+    if (!booking) return;
+
+    const departureTime = new Date(`2026-05-15T${booking.flight.departure_time}`);
+    const timeString = departureTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const durationHours = Math.floor(booking.flight.duration_minutes / 60);
+    const durationMins = booking.flight.duration_minutes % 60;
+
+    document.getElementById('detail-booking-ref').textContent = booking.booking_reference;
+    const statusEl = document.getElementById('detail-status');
+    statusEl.textContent = booking.status;
+    statusEl.className = `booking-status ${booking.status === 'CANCELLED' ? 'cancelled' : 'confirmed'}`;
+    document.getElementById('detail-route').innerHTML = `<strong>${booking.flight.origin} → ${booking.flight.destination}</strong>`;
+    document.getElementById('detail-departure').textContent = `${booking.flight.departure_date} at ${timeString}`;
+    document.getElementById('detail-duration').textContent = `${durationHours}h ${durationMins}m`;
+    document.getElementById('detail-passenger').textContent = booking.passenger_name;
+    document.getElementById('detail-passport').textContent = booking.passport_number;
+    document.getElementById('detail-seat').textContent = `#${booking.seat_number}`;
+    document.getElementById('detail-price').textContent = `Rs. ${parseFloat(booking.flight.price_per_seat).toLocaleString()}`;
+    document.getElementById('detail-booked-at').textContent = new Date(booking.booked_at).toLocaleString();
+
+    const cancelledRow = document.getElementById('detail-cancelled-row');
+    if (booking.cancelled_at) {
+        cancelledRow.classList.remove('hidden');
+        document.getElementById('detail-cancelled-at').textContent = new Date(booking.cancelled_at).toLocaleString();
+    } else {
+        cancelledRow.classList.add('hidden');
+    }
+
+    const cancelBtn = document.getElementById('detail-cancel-btn');
+    if (booking.status === 'CONFIRMED') {
+        cancelBtn.classList.remove('hidden');
+        cancelBtn.onclick = () => {
+            closeBookingDetailModal();
+            cancelBooking(bookingRef);
+        };
+    } else {
+        cancelBtn.classList.add('hidden');
+    }
+
+    document.getElementById('booking-detail-modal').classList.remove('hidden');
+}
+
+function closeBookingDetailModal() {
+    document.getElementById('booking-detail-modal').classList.add('hidden');
 }
 
 /**
@@ -375,7 +471,7 @@ async function cancelBooking(bookingRef) {
         }
         
         alert(`✅ Booking cancelled successfully!\nRefund amount: Rs. ${parseFloat(data.refund_amount).toLocaleString()}`);
-        searchBookings();
+        getAllBookings();
         
     } catch (error) {
         alert(`❌ Error: ${error.message}`);

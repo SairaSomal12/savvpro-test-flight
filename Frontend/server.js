@@ -85,6 +85,18 @@ app.post('/api/bookings', async (req, res) => {
     }
 });
 
+// GET /api/bookings - Get all bookings
+app.get('/api/bookings', async (req, res) => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/bookings`);
+        const data = await response.json();
+        res.status(response.status).json(data);
+    } catch (error) {
+        console.error('Error fetching all bookings:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // GET /api/bookings/:booking_reference
 app.get('/api/bookings/:bookingRef', async (req, res) => {
     try {

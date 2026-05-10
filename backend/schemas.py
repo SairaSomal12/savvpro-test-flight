@@ -80,6 +80,7 @@ class BookingDetailResponse(BaseModel):
     booking_reference: str
     flight: FlightResponse
     passenger_name: str
+    passport_number: str
     seat_number: int
     status: str
     booked_at: datetime
@@ -87,9 +88,15 @@ class BookingDetailResponse(BaseModel):
 
 
 class BookingListResponse(BaseModel):
-    """Response for listing bookings."""
+    """Response for listing bookings by passenger."""
     passenger_name: str
     bookings: List[BookingDetailResponse]
+
+
+class AllBookingsResponse(BaseModel):
+    """Response for listing all bookings."""
+    bookings: List[BookingDetailResponse]
+    count: int
 
 
 class CancellationResponse(BaseModel):

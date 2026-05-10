@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Flight, Booking
-from schemas import BookingCreate, BookingResponse, BookingDetailResponse, BookingListResponse, CancellationResponse
+from schemas import BookingCreate, BookingResponse, BookingDetailResponse, BookingListResponse, AllBookingsResponse, CancellationResponse
 import random
 import string
 
@@ -97,6 +97,42 @@ def create_booking(booking: BookingCreate, db: Session = Depends(get_db)):
     return new_booking
 
 
+@router.get("", response_model=AllBookingsResponse)
+def get_all_bookings(db: Session = Depends(get_db)):
+    """
+    Get all bookings in the system.
+    
+    Returns:
+    - List of all bookings with flight details
+    - 404 Not Found: No bookings found
+    """
+    bookings = db.query(Booking).all()
+    
+    if not bookings:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No bookings found"
+        )
+    
+    booking_details = []
+    for booking in bookings:
+        booking_details.append({
+            "booking_reference": booking.booking_reference,
+            "flight": booking.flight,
+            "passenger_name": booking.passenger_name,
+            "passport_number": booking.passport_number,
+            "seat_number": booking.seat_number,
+            "status": booking.status,
+            "booked_at": booking.booked_at,
+            "cancelled_at": booking.cancelled_at
+        })
+
+    return {
+        "bookings": booking_details,
+        "count": len(booking_details)
+    }
+
+
 @router.get("/{booking_reference}", response_model=BookingDetailResponse)
 def get_booking(booking_reference: str, db: Session = Depends(get_db)):
     """
@@ -123,6 +159,7 @@ def get_booking(booking_reference: str, db: Session = Depends(get_db)):
         "booking_reference": booking.booking_reference,
         "flight": booking.flight,
         "passenger_name": booking.passenger_name,
+        "passport_number": booking.passport_number,
         "seat_number": booking.seat_number,
         "status": booking.status,
         "booked_at": booking.booked_at,
@@ -158,12 +195,13 @@ def get_bookings_by_passenger(passenger_name: str, db: Session = Depends(get_db)
             "booking_reference": booking.booking_reference,
             "flight": booking.flight,
             "passenger_name": booking.passenger_name,
+            "passport_number": booking.passport_number,
             "seat_number": booking.seat_number,
             "status": booking.status,
             "booked_at": booking.booked_at,
             "cancelled_at": booking.cancelled_at
         })
-    
+
     return {
         "passenger_name": passenger_name,
         "bookings": booking_details

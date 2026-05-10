@@ -41,10 +41,14 @@ let currentSeatLimit = 0;
 let bookingsCache = {};
 let currentSelectedSeat = null;
 
-// Flight pagination state — render in batches and reveal more on user click
+// Pagination state — render lists in batches and reveal more on user click
 const FLIGHTS_PAGE_SIZE = 9;
 let allFlights = [];
 let renderedCount = 0;
+
+const BOOKINGS_PAGE_SIZE = 9;
+let allBookings = [];
+let renderedBookingsCount = 0;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -265,8 +269,9 @@ function updateLoadMoreButton() {
 }
 
 function buildFlightCard(flight) {
+    const isFullyBooked = flight.available_seats === 0;
     const flightCard = document.createElement('div');
-    flightCard.className = 'flight-card';
+    flightCard.className = `flight-card${isFullyBooked ? ' flight-card-full' : ''}`;
     flightCard.dataset.flightId = flight.id;
 
     const departureTime = new Date(`2026-05-15T${flight.departure_time}`);
@@ -278,7 +283,10 @@ function buildFlightCard(flight) {
 
     flightCard.innerHTML = `
         <div class="flight-header">
-            <h3>${flight.origin} → ${flight.destination}</h3>
+            <div class="flight-header-top">
+                <h3>${flight.origin} → ${flight.destination}</h3>
+                ${isFullyBooked ? '<span class="flight-status-badge">Fully Booked</span>' : ''}
+            </div>
             <span class="flight-date">${flight.departure_date}</span>
         </div>
 
@@ -497,10 +505,19 @@ async function updateFlightCardSeats(flightId) {
     try {
         const res = await fetch(`${API_BASE}/flights/${flightId}/seats`);
         const data = await res.json();
-        // Update every visible seat-count badge for this flight
-        document.querySelectorAll(`[data-flight-id="${flightId}"] .seat-count`).forEach(el => {
-            el.textContent = `${data.available_seats}/${data.available_seats + data.booked_seats.length}`;
-            el.className = `value seat-count ${data.available_seats > 0 ? 'seats-available' : 'seats-full'}`;
+        const totalSeats = data.available_seats + data.booked_seats.length;
+
+        // Sync the cached flight so any subsequent re-render (e.g. Load More) is correct
+        const cached = allFlights.find(f => f.id === flightId);
+        if (cached) {
+            cached.available_seats = data.available_seats;
+            cached.total_seats = totalSeats;
+        }
+
+        // Re-render every visible card for this flight so the badge appears and
+        // the Book Now button gets swapped for "No Seats Available" if needed.
+        document.querySelectorAll(`[data-flight-id="${flightId}"]`).forEach(oldCard => {
+            if (cached) oldCard.replaceWith(buildFlightCard(cached));
         });
     } catch (_) { /* non-critical */ }
 }
@@ -524,7 +541,8 @@ async function getAllBookings() {
     results.classList.add('hidden');
     errorDiv.classList.add('hidden');
     if (noResults) noResults.classList.add('hidden');
-    
+    document.getElementById('bookings-count').textContent = '';
+
     try {
         const response = await fetch(`${API_BASE}/bookings`);
         const data = await response.json();
@@ -572,7 +590,8 @@ async function searchBookings() {
     loading.classList.remove('hidden');
     results.classList.add('hidden');
     errorDiv.classList.add('hidden');
-    
+    document.getElementById('bookings-count').textContent = '';
+
     try {
         let url;
         if (bookingRef) {
@@ -599,54 +618,91 @@ async function searchBookings() {
 }
 
 /**
- * Display Bookings (compact grid cards)
+ * Display Bookings — caches the full list (sorted most-recent-first) and renders
+ * the first page. The rest is revealed via the "Load More" button.
  */
 function displayBookings(data, type) {
-    const container = document.getElementById('bookings-list');
-    container.innerHTML = '';
+    document.getElementById('bookings-list').innerHTML = '';
     bookingsCache = {};
 
-    const bookings = type === 'single' ? [data] : data.bookings;
+    if (type === 'single') {
+        // single booking by reference — no sorting/pagination needed
+        allBookings = [data];
+    } else {
+        // newest first by booked_at
+        allBookings = (data.bookings || []).slice().sort(
+            (a, b) => new Date(b.booked_at) - new Date(a.booked_at)
+        );
+    }
 
-    bookings.forEach(booking => {
+    renderedBookingsCount = 0;
+    document.getElementById('bookings-count').textContent =
+        allBookings.length > 0 ? `(${allBookings.length})` : '';
+    appendBookingCards(BOOKINGS_PAGE_SIZE);
+}
+
+function appendBookingCards(count) {
+    const container = document.getElementById('bookings-list');
+    const slice = allBookings.slice(renderedBookingsCount, renderedBookingsCount + count);
+    slice.forEach(booking => {
         bookingsCache[booking.booking_reference] = booking;
-
-        const card = document.createElement('div');
-        card.className = 'booking-card-compact';
-
-        const departureTime = new Date(`2026-05-15T${booking.flight.departure_time}`);
-        const timeString = departureTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-        card.innerHTML = `
-            <div class="compact-card-header">
-                <span class="compact-ref">${booking.booking_reference}</span>
-                <span class="booking-status ${booking.status === 'CANCELLED' ? 'cancelled' : 'confirmed'}">${booking.status}</span>
-            </div>
-            <div class="compact-route">${booking.flight.origin} → ${booking.flight.destination}</div>
-            <div class="compact-details">
-                <div class="compact-detail-row">
-                    <span class="label">Departure</span>
-                    <span class="value">${booking.flight.departure_date} at ${timeString}</span>
-                </div>
-                <div class="compact-detail-row">
-                    <span class="label">Passenger</span>
-                    <span class="value">${booking.passenger_name}</span>
-                </div>
-                <div class="compact-detail-row">
-                    <span class="label">Seat</span>
-                    <span class="value">#${booking.seat_number}</span>
-                </div>
-            </div>
-            <div class="compact-actions">
-                <button class="btn btn-info" onclick="reviewBooking('${booking.booking_reference}')">Review Details</button>
-                ${booking.status === 'CONFIRMED' ? `
-                    <button class="btn btn-danger" onclick="cancelBooking('${booking.booking_reference}')">Cancel</button>
-                ` : ''}
-            </div>
-        `;
-
-        container.appendChild(card);
+        container.appendChild(buildBookingCard(booking));
     });
+    renderedBookingsCount += slice.length;
+    updateBookingsLoadMoreButton();
+}
+
+function loadMoreBookings() {
+    appendBookingCards(BOOKINGS_PAGE_SIZE);
+}
+
+function updateBookingsLoadMoreButton() {
+    const btn = document.getElementById('bookings-load-more-btn');
+    const remaining = allBookings.length - renderedBookingsCount;
+    if (remaining > 0) {
+        btn.textContent = `Load More (${remaining} remaining)`;
+        btn.classList.remove('hidden');
+    } else {
+        btn.classList.add('hidden');
+    }
+}
+
+function buildBookingCard(booking) {
+    const card = document.createElement('div');
+    card.className = 'booking-card-compact';
+
+    const departureTime = new Date(`2026-05-15T${booking.flight.departure_time}`);
+    const timeString = departureTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    card.innerHTML = `
+        <div class="compact-card-header">
+            <span class="compact-ref">${booking.booking_reference}</span>
+            <span class="booking-status ${booking.status === 'CANCELLED' ? 'cancelled' : 'confirmed'}">${booking.status}</span>
+        </div>
+        <div class="compact-route">${booking.flight.origin} → ${booking.flight.destination}</div>
+        <div class="compact-details">
+            <div class="compact-detail-row">
+                <span class="label">Departure</span>
+                <span class="value">${booking.flight.departure_date} at ${timeString}</span>
+            </div>
+            <div class="compact-detail-row">
+                <span class="label">Passenger</span>
+                <span class="value">${booking.passenger_name}</span>
+            </div>
+            <div class="compact-detail-row">
+                <span class="label">Seat</span>
+                <span class="value">#${booking.seat_number}</span>
+            </div>
+        </div>
+        <div class="compact-actions">
+            <button class="btn btn-info" onclick="reviewBooking('${booking.booking_reference}')">Review Details</button>
+            ${booking.status === 'CONFIRMED' ? `
+                <button class="btn btn-danger" onclick="cancelBooking('${booking.booking_reference}')">Cancel</button>
+            ` : ''}
+        </div>
+    `;
+
+    return card;
 }
 
 /**

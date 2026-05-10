@@ -117,7 +117,7 @@
             <!-- Bookings Tab -->
             <section id="bookings-tab" class="tab">
                 <div class="bookings-container">
-                    <h2>My Bookings</h2>
+                    <h2>My Bookings <span id="bookings-count" class="results-count"></span></h2>
                     <p class="form-hint">All your bookings are loaded automatically. Use the search below to filter by reference or passenger name.</p>
                     
                     <div class="bookings-search">
@@ -137,6 +137,11 @@
                     <div id="bookings-results" class="results-container hidden">
                         <div id="bookings-list">
                             <!-- Bookings will be inserted here -->
+                        </div>
+                        <div class="load-more-wrap">
+                            <button id="bookings-load-more-btn" class="btn btn-primary load-more-btn hidden" type="button" onclick="loadMoreBookings()">
+                                Load More
+                            </button>
                         </div>
                     </div>
 

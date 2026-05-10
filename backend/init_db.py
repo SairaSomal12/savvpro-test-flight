@@ -32,25 +32,25 @@ def init_db():
         # Flight routes with their properties
         routes = [
             # Domestic routes
-            {"origin": "ISB", "destination": "LHE", "duration": 60, "price": 4500.00, "seats": 150},
-            {"origin": "LHE", "destination": "KHI", "duration": 120, "price": 5500.00, "seats": 180},
-            {"origin": "KHI", "destination": "ISB", "duration": 150, "price": 5800.00, "seats": 160},
-            {"origin": "ISB", "destination": "PEW", "duration": 90, "price": 3500.00, "seats": 120},
-            {"origin": "LHE", "destination": "MUL", "duration": 75, "price": 3200.00, "seats": 100},
-            {"origin": "KHI", "destination": "QTA", "duration": 180, "price": 6500.00, "seats": 90},
-            {"origin": "PEW", "destination": "LHE", "duration": 90, "price": 3500.00, "seats": 120},
-            {"origin": "MUL", "destination": "KHI", "duration": 120, "price": 4200.00, "seats": 110},
-            
+            {"origin": "Islamabad", "destination": "Lahore", "duration": 60, "price": 4500.00, "seats": 150},
+            {"origin": "Lahore", "destination": "Karachi", "duration": 120, "price": 5500.00, "seats": 180},
+            {"origin": "Karachi", "destination": "Islamabad", "duration": 150, "price": 5800.00, "seats": 160},
+            {"origin": "Islamabad", "destination": "Peshawar", "duration": 90, "price": 3500.00, "seats": 120},
+            {"origin": "Lahore", "destination": "Multan", "duration": 75, "price": 3200.00, "seats": 100},
+            {"origin": "Karachi", "destination": "Quetta", "duration": 180, "price": 6500.00, "seats": 90},
+            {"origin": "Peshawar", "destination": "Lahore", "duration": 90, "price": 3500.00, "seats": 120},
+            {"origin": "Multan", "destination": "Karachi", "duration": 120, "price": 4200.00, "seats": 110},
+
             # International routes
-            {"origin": "KHI", "destination": "DXB", "duration": 180, "price": 15500.00, "seats": 200},
-            {"origin": "LHE", "destination": "DOH", "duration": 210, "price": 16000.00, "seats": 180},
-            {"origin": "ISB", "destination": "DOH", "duration": 210, "price": 16000.00, "seats": 200},
-            {"origin": "KHI", "destination": "BKK", "duration": 360, "price": 24500.00, "seats": 220},
-            {"origin": "LHE", "destination": "DXB", "duration": 180, "price": 15500.00, "seats": 200},
-            {"origin": "ISB", "destination": "JED", "duration": 180, "price": 14500.00, "seats": 180},
-            {"origin": "DXB", "destination": "KHI", "duration": 180, "price": 15500.00, "seats": 200},
-            {"origin": "DOH", "destination": "LHE", "duration": 210, "price": 16000.00, "seats": 180},
-            {"origin": "BKK", "destination": "KHI", "duration": 360, "price": 24500.00, "seats": 220},
+            {"origin": "Karachi", "destination": "Dubai", "duration": 180, "price": 15500.00, "seats": 200},
+            {"origin": "Lahore", "destination": "Doha", "duration": 210, "price": 16000.00, "seats": 180},
+            {"origin": "Islamabad", "destination": "Doha", "duration": 210, "price": 16000.00, "seats": 200},
+            {"origin": "Karachi", "destination": "Bangkok", "duration": 360, "price": 24500.00, "seats": 220},
+            {"origin": "Lahore", "destination": "Dubai", "duration": 180, "price": 15500.00, "seats": 200},
+            {"origin": "Islamabad", "destination": "Jeddah", "duration": 180, "price": 14500.00, "seats": 180},
+            {"origin": "Dubai", "destination": "Karachi", "duration": 180, "price": 15500.00, "seats": 200},
+            {"origin": "Doha", "destination": "Lahore", "duration": 210, "price": 16000.00, "seats": 180},
+            {"origin": "Bangkok", "destination": "Karachi", "duration": 360, "price": 24500.00, "seats": 220},
         ]
         
         # Generate flights for each day over 2 weeks with varying times

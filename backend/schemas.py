@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field
 # Flight Schemas
 class FlightBase(BaseModel):
     """Base flight schema."""
-    origin: str = Field(..., min_length=3, max_length=3, description="Airport code (3 letters)")
-    destination: str = Field(..., min_length=3, max_length=3, description="Airport code (3 letters)")
+    origin: str = Field(..., min_length=1, max_length=100, description="Origin city name")
+    destination: str = Field(..., min_length=1, max_length=100, description="Destination city name")
     departure_date: date
     departure_time: time
     duration_minutes: int = Field(..., gt=0)

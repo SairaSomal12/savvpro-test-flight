@@ -2,29 +2,160 @@
  * FlightHub Frontend - Client Side JavaScript
  */
 
+// ── Landing page ──────────────────────────────────────────────────────────
+(function () {
+    // Populate star field
+    const starsEl = document.getElementById('lp-stars');
+    if (starsEl) {
+        for (let i = 0; i < 80; i++) {
+            const s = document.createElement('div');
+            s.className = 'lp-star';
+            const size = Math.random() * 2.4 + 0.6;
+            s.style.cssText = [
+                `width:${size}px`,
+                `height:${size}px`,
+                `top:${Math.random() * 100}%`,
+                `left:${Math.random() * 100}%`,
+                `--dur:${(Math.random() * 2 + 1.2).toFixed(2)}s`,
+                `--delay:${(Math.random() * 2).toFixed(2)}s`,
+            ].join(';');
+            starsEl.appendChild(s);
+        }
+    }
+
+    // Fade out and remove overlay after animations finish
+    const overlay = document.getElementById('landing-overlay');
+    if (overlay) {
+        setTimeout(() => {
+            overlay.classList.add('lp-fade-out');
+            setTimeout(() => overlay.remove(), 950);
+        }, 4000);
+    }
+}());
+// ── End landing page ──────────────────────────────────────────────────────
+
 // Use relative URLs to go through Express proxy server
 const API_BASE = '/api';
 let currentFlight = null;
 let currentSeatLimit = 0;
 let bookingsCache = {};
+let currentSelectedSeat = null;
+
+// Flight pagination state — render in batches and reveal more on user click
+const FLIGHTS_PAGE_SIZE = 9;
+let allFlights = [];
+let renderedCount = 0;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    // Set minimum date to today
-    const today = new Date().toISOString().split('T')[0];
-    const dateInput = document.getElementById('departure-date');
-    if (dateInput) {
-        dateInput.min = today;
-        dateInput.value = today; // Set default to today
-    }
-    
-    // Auto-uppercase airport codes
-    document.querySelectorAll('.input-uppercase').forEach(input => {
-        input.addEventListener('input', (e) => {
-            e.target.value = e.target.value.toUpperCase();
-        });
-    });
+    loadFlightOptions();
 });
+
+async function loadFlightOptions() {
+    try {
+        const res = await fetch(`${API_BASE}/flights/options`);
+        const data = await res.json();
+
+        // Both dropdowns share the same unique city list (union of origins + destinations)
+        const cities = [...new Set([...(data.origins || []), ...(data.destinations || [])])].sort();
+        setupSearchableDropdown('origin', cities);
+        setupSearchableDropdown('destination', cities);
+
+        // Constrain the calendar to the date range available in seed data
+        const dateInput = document.getElementById('departure-date');
+        if (dateInput && data.dates && data.dates.length > 0) {
+            const sorted = [...data.dates].sort();
+            dateInput.min = sorted[0];
+            dateInput.max = sorted[sorted.length - 1];
+        }
+    } catch (err) {
+        console.error('Could not load flight filter options:', err);
+    }
+}
+
+/**
+ * Searchable autocomplete: shows all items on focus, filters as the user types,
+ * supports keyboard navigation, and exposes a clear button.
+ */
+function setupSearchableDropdown(inputId, items) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const wrapper = input.closest('.search-select');
+    const list = wrapper.querySelector('.search-select-list');
+    const clearBtn = wrapper.querySelector('.search-select-clear');
+    let activeIndex = -1;
+    let visibleItems = [];
+
+    function syncClearButtonVisibility() {
+        wrapper.classList.toggle('has-value', input.value.length > 0);
+    }
+
+    function render(filter = '') {
+        const f = filter.toLowerCase().trim();
+        list.innerHTML = '';
+        activeIndex = -1;
+        visibleItems = items.filter(c => c.toLowerCase().includes(f));
+
+        if (visibleItems.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'search-select-empty';
+            empty.textContent = 'No matches';
+            list.appendChild(empty);
+            return;
+        }
+
+        visibleItems.forEach((city, idx) => {
+            const opt = document.createElement('div');
+            opt.className = 'search-select-option';
+            opt.textContent = city;
+            opt.dataset.index = idx;
+            // mousedown fires before blur, so we can pick before the list hides
+            opt.addEventListener('mousedown', e => {
+                e.preventDefault();
+                pick(city);
+            });
+            list.appendChild(opt);
+        });
+    }
+
+    function pick(city) {
+        input.value = city;
+        list.classList.add('hidden');
+        syncClearButtonVisibility();
+        input.dispatchEvent(new Event('change'));
+    }
+
+    function setActive(idx) {
+        const opts = list.querySelectorAll('.search-select-option');
+        opts.forEach(o => o.classList.remove('active'));
+        if (idx < 0 || idx >= opts.length) { activeIndex = -1; return; }
+        activeIndex = idx;
+        opts[idx].classList.add('active');
+        opts[idx].scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('focus', () => { render(input.value); list.classList.remove('hidden'); });
+    input.addEventListener('input', () => {
+        render(input.value);
+        list.classList.remove('hidden');
+        syncClearButtonVisibility();
+    });
+    input.addEventListener('blur', () => { setTimeout(() => list.classList.add('hidden'), 150); });
+    input.addEventListener('keydown', e => {
+        if (list.classList.contains('hidden')) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(activeIndex + 1, visibleItems.length - 1)); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(activeIndex - 1, 0)); }
+        else if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); pick(visibleItems[activeIndex]); }
+        else if (e.key === 'Escape') { list.classList.add('hidden'); }
+    });
+    clearBtn.addEventListener('mousedown', e => {
+        e.preventDefault();
+        input.value = '';
+        render('');
+        syncClearButtonVisibility();
+        input.focus();
+    });
+}
 
 /**
  * Tab Navigation
@@ -99,92 +230,188 @@ async function searchFlights(origin, destination, departureDate) {
 }
 
 /**
- * Display Flights
+ * Display Flights — caches the full result and renders the first page.
+ * The rest is revealed via the "Load More" button.
  */
 function displayFlights(flights) {
+    allFlights = flights;
+    renderedCount = 0;
+    document.getElementById('flights-list').innerHTML = '';
+    document.getElementById('flights-count').textContent = `(${flights.length})`;
+    appendFlightCards(FLIGHTS_PAGE_SIZE);
+}
+
+function appendFlightCards(count) {
     const container = document.getElementById('flights-list');
-    container.innerHTML = '';
-    
-    flights.forEach(flight => {
-        const flightCard = document.createElement('div');
-        flightCard.className = 'flight-card';
-        
-        const departureTime = new Date(`2026-05-15T${flight.departure_time}`);
-        const timeString = departureTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        
-        const durationHours = Math.floor(flight.duration_minutes / 60);
-        const durationMins = flight.duration_minutes % 60;
-        const durationString = durationHours > 0 ? `${durationHours}h ${durationMins}m` : `${durationMins}m`;
-        
-        flightCard.innerHTML = `
-            <div class="flight-header">
-                <h3>${flight.origin} → ${flight.destination}</h3>
-                <span class="flight-date">${flight.departure_date}</span>
+    const slice = allFlights.slice(renderedCount, renderedCount + count);
+    slice.forEach(flight => container.appendChild(buildFlightCard(flight)));
+    renderedCount += slice.length;
+    updateLoadMoreButton();
+}
+
+function loadMoreFlights() {
+    appendFlightCards(FLIGHTS_PAGE_SIZE);
+}
+
+function updateLoadMoreButton() {
+    const btn = document.getElementById('load-more-btn');
+    const remaining = allFlights.length - renderedCount;
+    if (remaining > 0) {
+        btn.textContent = `Load More (${remaining} remaining)`;
+        btn.classList.remove('hidden');
+    } else {
+        btn.classList.add('hidden');
+    }
+}
+
+function buildFlightCard(flight) {
+    const flightCard = document.createElement('div');
+    flightCard.className = 'flight-card';
+    flightCard.dataset.flightId = flight.id;
+
+    const departureTime = new Date(`2026-05-15T${flight.departure_time}`);
+    const timeString = departureTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const durationHours = Math.floor(flight.duration_minutes / 60);
+    const durationMins = flight.duration_minutes % 60;
+    const durationString = durationHours > 0 ? `${durationHours}h ${durationMins}m` : `${durationMins}m`;
+
+    flightCard.innerHTML = `
+        <div class="flight-header">
+            <h3>${flight.origin} → ${flight.destination}</h3>
+            <span class="flight-date">${flight.departure_date}</span>
+        </div>
+
+        <div class="flight-info">
+            <div class="info-item">
+                <span class="label">Departure</span>
+                <span class="value">${timeString}</span>
             </div>
-            
-            <div class="flight-info">
-                <div class="info-item">
-                    <span class="label">Departure</span>
-                    <span class="value">${timeString}</span>
-                </div>
-                <div class="info-item">
-                    <span class="label">Duration</span>
-                    <span class="value">${durationString}</span>
-                </div>
-                <div class="info-item">
-                    <span class="label">Price</span>
-                    <span class="value">Rs. ${parseFloat(flight.price_per_seat).toLocaleString()}</span>
-                </div>
-                <div class="info-item">
-                    <span class="label">Available Seats</span>
-                    <span class="value ${flight.available_seats > 0 ? 'seats-available' : 'seats-full'}">${flight.available_seats}/${flight.total_seats}</span>
-                </div>
+            <div class="info-item">
+                <span class="label">Duration</span>
+                <span class="value">${durationString}</span>
             </div>
-            
-            <div class="flight-actions">
-                ${flight.available_seats > 0 ? `
-                    <button class="btn btn-book" onclick="openBookingModal(${JSON.stringify(flight).replace(/"/g, '&quot;')})">
-                        Book Now
-                    </button>
-                ` : `
-                    <button class="btn btn-disabled" disabled>No Seats Available</button>
-                `}
+            <div class="info-item">
+                <span class="label">Price</span>
+                <span class="value">Rs. ${parseFloat(flight.price_per_seat).toLocaleString()}</span>
             </div>
-        `;
-        
-        container.appendChild(flightCard);
-    });
+            <div class="info-item">
+                <span class="label">Available Seats</span>
+                <span class="value seat-count ${flight.available_seats > 0 ? 'seats-available' : 'seats-full'}">${flight.available_seats}/${flight.total_seats}</span>
+            </div>
+        </div>
+
+        <div class="flight-actions">
+            ${flight.available_seats > 0 ? `
+                <button class="btn btn-book" onclick="openBookingModal(${JSON.stringify(flight).replace(/"/g, '&quot;')})">
+                    Book Now
+                </button>
+            ` : `
+                <button class="btn btn-disabled" disabled>No Seats Available</button>
+            `}
+        </div>
+    `;
+
+    return flightCard;
 }
 
 /**
  * Booking Modal
  */
-function openBookingModal(flight) {
+async function openBookingModal(flight) {
     currentFlight = flight;
     currentSeatLimit = flight.total_seats;
-    
+    currentSelectedSeat = null;
+
     const modal = document.getElementById('booking-modal');
     const details = document.getElementById('flight-details');
-    
+
     const departureTime = new Date(`2026-05-15T${flight.departure_time}`);
     const timeString = departureTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-    
+
     details.innerHTML = `
         <p><strong>${flight.origin} → ${flight.destination}</strong></p>
         <p>Date: ${flight.departure_date} at ${timeString}</p>
         <p>Price: Rs. ${parseFloat(flight.price_per_seat).toLocaleString()} per seat</p>
         <p>Available Seats: ${flight.available_seats}/${flight.total_seats}</p>
     `;
-    
-    // Set seat number max value
-    document.getElementById('seat-number').max = flight.total_seats;
-    
-    // Clear form
+
+    // Reset form state
     document.getElementById('booking-form').reset();
     document.getElementById('booking-error').classList.add('hidden');
     document.getElementById('booking-success').classList.add('hidden');
-    
+    document.getElementById('booking-form').classList.remove('hidden');
+    document.getElementById('selected-seat-display').textContent = 'No seat selected';
+    document.getElementById('seat-map-rows').innerHTML = '<div class="seat-map-loading">Loading seat map…</div>';
+
     modal.classList.remove('hidden');
+
+    // Fetch booked seats then render the map
+    try {
+        const response = await fetch(`${API_BASE}/flights/${flight.id}/seats`);
+        const seatsData = await response.json();
+        renderSeatMap(seatsData.booked_seats, flight.total_seats);
+    } catch (error) {
+        document.getElementById('seat-map-rows').innerHTML = '<div class="seat-map-loading">Could not load seat map.</div>';
+    }
+}
+
+function renderSeatMap(bookedSeats, totalSeats) {
+    const container = document.getElementById('seat-map-rows');
+    container.innerHTML = '';
+    currentSelectedSeat = null;
+
+    const seatsPerRow = 6;
+    const totalRows = Math.ceil(totalSeats / seatsPerRow);
+
+    for (let row = 0; row < totalRows; row++) {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'seat-row';
+
+        const rowLabel = document.createElement('span');
+        rowLabel.className = 'row-num';
+        rowLabel.textContent = row + 1;
+        rowEl.appendChild(rowLabel);
+
+        for (let col = 0; col < seatsPerRow; col++) {
+            if (col === 3) {
+                const aisle = document.createElement('span');
+                aisle.className = 'seat-aisle-gap';
+                rowEl.appendChild(aisle);
+            }
+
+            const seatNum = row * seatsPerRow + col + 1;
+            const seatEl = document.createElement('div');
+
+            if (seatNum <= totalSeats) {
+                const isBooked = bookedSeats.includes(seatNum);
+                seatEl.className = `seat ${isBooked ? 'seat-booked' : 'seat-available'}`;
+                seatEl.textContent = seatNum;
+                seatEl.dataset.seat = seatNum;
+                if (!isBooked) {
+                    seatEl.addEventListener('click', () => selectSeat(seatNum, seatEl));
+                }
+            } else {
+                seatEl.className = 'seat seat-empty';
+            }
+
+            rowEl.appendChild(seatEl);
+        }
+
+        container.appendChild(rowEl);
+    }
+}
+
+function selectSeat(seatNum, seatEl) {
+    const prev = document.querySelector('.seat-selected');
+    if (prev) {
+        prev.classList.remove('seat-selected');
+        prev.classList.add('seat-available');
+    }
+    currentSelectedSeat = seatNum;
+    seatEl.classList.remove('seat-available');
+    seatEl.classList.add('seat-selected');
+    document.getElementById('selected-seat-display').textContent = `Selected: Seat ${seatNum}`;
 }
 
 function closeBookingModal() {
@@ -199,20 +426,20 @@ async function submitBooking(e) {
     
     const passengerName = document.getElementById('passenger-name-input').value.trim();
     const passportNumber = document.getElementById('passport-number').value.trim();
-    const seatNumber = parseInt(document.getElementById('seat-number').value);
-    
+    const seatNumber = currentSelectedSeat;
+
     if (!currentFlight) {
         showBookingError('Flight not selected');
         return;
     }
-    
-    if (!passengerName || !passportNumber || !seatNumber) {
+
+    if (!passengerName || !passportNumber) {
         showBookingError('Please fill in all fields');
         return;
     }
-    
-    if (seatNumber < 1 || seatNumber > currentSeatLimit) {
-        showBookingError(`Seat number must be between 1 and ${currentSeatLimit}`);
+
+    if (!seatNumber) {
+        showBookingError('Please select a seat from the seat map');
         return;
     }
     
@@ -243,17 +470,39 @@ async function submitBooking(e) {
         if (!response.ok) {
             throw new Error(data.detail || data.message || 'Booking failed');
         }
-        
-        // Show success message
+
+        // Show success and update the flight card's seat count in the background
         document.getElementById('booking-ref-display').textContent = `Your booking reference: ${data.booking_reference}`;
         document.getElementById('booking-form').classList.add('hidden');
         successDiv.classList.remove('hidden');
-        
+        updateFlightCardSeats(currentFlight.id);
+
     } catch (error) {
         showBookingError(error.message);
+        // Refresh seat map so the user sees the true current state
+        // (another user may have taken the seat between our check and their attempt)
+        if (currentFlight) {
+            try {
+                const seatsRes = await fetch(`${API_BASE}/flights/${currentFlight.id}/seats`);
+                const seatsData = await seatsRes.json();
+                renderSeatMap(seatsData.booked_seats, currentFlight.total_seats);
+            } catch (_) { /* silent — seat map stays as-is */ }
+        }
     } finally {
         loading.classList.add('hidden');
     }
+}
+
+async function updateFlightCardSeats(flightId) {
+    try {
+        const res = await fetch(`${API_BASE}/flights/${flightId}/seats`);
+        const data = await res.json();
+        // Update every visible seat-count badge for this flight
+        document.querySelectorAll(`[data-flight-id="${flightId}"] .seat-count`).forEach(el => {
+            el.textContent = `${data.available_seats}/${data.available_seats + data.booked_seats.length}`;
+            el.className = `value seat-count ${data.available_seats > 0 ? 'seats-available' : 'seats-full'}`;
+        });
+    } catch (_) { /* non-critical */ }
 }
 
 /**
@@ -423,12 +672,14 @@ function reviewBooking(bookingRef) {
     document.getElementById('detail-passport').textContent = booking.passport_number;
     document.getElementById('detail-seat').textContent = `#${booking.seat_number}`;
     document.getElementById('detail-price').textContent = `Rs. ${parseFloat(booking.flight.price_per_seat).toLocaleString()}`;
-    document.getElementById('detail-booked-at').textContent = new Date(booking.booked_at).toLocaleString();
+    // Backend returns naive UTC timestamps; tag with 'Z' so the browser parses
+    // them as UTC instead of local time, then display in local time.
+    document.getElementById('detail-booked-at').textContent = new Date(booking.booked_at + 'Z').toLocaleString();
 
     const cancelledRow = document.getElementById('detail-cancelled-row');
     if (booking.cancelled_at) {
         cancelledRow.classList.remove('hidden');
-        document.getElementById('detail-cancelled-at').textContent = new Date(booking.cancelled_at).toLocaleString();
+        document.getElementById('detail-cancelled-at').textContent = new Date(booking.cancelled_at + 'Z').toLocaleString();
     } else {
         cancelledRow.classList.add('hidden');
     }
@@ -452,29 +703,90 @@ function closeBookingDetailModal() {
 }
 
 /**
+ * Custom confirmation modal — drop-in replacement for window.confirm()
+ * that styles to match the rest of the app and returns a Promise<boolean>.
+ */
+function showConfirm(title, message, options = {}) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('confirm-modal');
+        const yesBtn = document.getElementById('confirm-yes');
+        const noBtn = document.getElementById('confirm-no');
+
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-message').textContent = message;
+        yesBtn.textContent = options.confirmText || 'Confirm';
+        noBtn.textContent = options.cancelText || 'Cancel';
+        yesBtn.className = `btn ${options.confirmClass || 'btn-danger'}`;
+
+        const cleanup = (result) => {
+            modal.classList.add('hidden');
+            yesBtn.removeEventListener('click', onYes);
+            noBtn.removeEventListener('click', onNo);
+            modal.removeEventListener('click', onBackdrop);
+            document.removeEventListener('keydown', onKey);
+            resolve(result);
+        };
+        const onYes = () => cleanup(true);
+        const onNo = () => cleanup(false);
+        const onBackdrop = (e) => { if (e.target === modal) cleanup(false); };
+        const onKey = (e) => { if (e.key === 'Escape') cleanup(false); };
+
+        yesBtn.addEventListener('click', onYes);
+        noBtn.addEventListener('click', onNo);
+        modal.addEventListener('click', onBackdrop);
+        document.addEventListener('keydown', onKey);
+
+        modal.classList.remove('hidden');
+    });
+}
+
+/**
+ * Toast — replaces alert() with a styled, auto-dismissing notification.
+ * variant ∈ { 'success', 'error', 'info' (default) }.
+ */
+function showToast(message, variant = 'info', duration = 3500) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = `toast toast-${variant}`;
+    // Force reflow before adding visible class so the transition runs.
+    void toast.offsetWidth;
+    toast.classList.add('toast-visible');
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => {
+        toast.classList.remove('toast-visible');
+    }, duration);
+}
+
+/**
  * Cancel Booking
  */
 async function cancelBooking(bookingRef) {
-    if (!confirm('Are you sure you want to cancel this booking?')) {
-        return;
-    }
-    
+    const confirmed = await showConfirm(
+        'Cancel Booking?',
+        'Are you sure you want to cancel this booking? This action cannot be undone.',
+        { confirmText: 'Yes, Cancel Booking', cancelText: 'Keep Booking' }
+    );
+    if (!confirmed) return;
+
     try {
         const response = await fetch(`${API_BASE}/bookings/${bookingRef}`, {
             method: 'DELETE'
         });
-        
+
         const data = await response.json();
-        
+
         if (!response.ok) {
             throw new Error(data.detail || 'Cancellation failed');
         }
-        
-        alert(`✅ Booking cancelled successfully!\nRefund amount: Rs. ${parseFloat(data.refund_amount).toLocaleString()}`);
+
+        showToast(
+            `Booking cancelled. Refund: Rs. ${parseFloat(data.refund_amount).toLocaleString()}`,
+            'success'
+        );
         getAllBookings();
-        
+
     } catch (error) {
-        alert(`❌ Error: ${error.message}`);
+        showToast(`Error: ${error.message}`, 'error');
     }
 }
 

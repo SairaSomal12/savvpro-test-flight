@@ -7,6 +7,37 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+    <!-- Landing Splash Screen -->
+    <div id="landing-overlay" class="landing-overlay">
+        <div id="lp-stars" class="lp-stars"></div>
+        <div class="lp-inner">
+            <div class="lp-header">
+                <div class="lp-logo-plane">✈</div>
+                <h1 class="lp-title">FlightHub</h1>
+                <p class="lp-subtitle">Flight Search &amp; Booking System</p>
+            </div>
+            <div class="lp-scene">
+                <div class="lp-airport lp-origin">
+                    <span class="lp-city">Islamabad</span>
+                </div>
+                <div class="lp-track">
+                    <svg class="lp-svg-path" width="540" height="170" viewBox="0 -110 540 170">
+                        <path class="lp-dash-line"
+                              d="M 0 40 L 220 22 C 245 22 265 -5 265 -38 C 265 -71 245 -98 220 -98 C 195 -98 175 -71 175 -38 C 175 -5 195 22 220 22 L 450 35"
+                              stroke="rgba(196, 181, 253, 0.55)" stroke-width="3" fill="none"
+                              stroke-dasharray="8 5" />
+                    </svg>
+                    <div class="lp-plane">✈</div>
+                </div>
+                <div class="lp-airport lp-dest">
+                    <div class="lp-pin">📍</div>
+                    <span class="lp-city">Dubai</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <!-- Header -->
         <header class="header">
@@ -26,19 +57,27 @@
             <section id="search-tab" class="tab active">
                 <div class="search-container">
                     <h2>Search Flights</h2>
-                    <p class="form-hint">Fill in any combination of fields or leave empty to see all available flights.</p>
+                    <p class="form-hint">Choose from the dropdowns to filter flights, or leave as "All" to see everything.</p>
                     <form id="search-form" class="search-form">
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="origin">From (Origin) - Optional</label>
-                                <input type="text" id="origin" placeholder="e.g., ISB, LHE, KHI" maxlength="3" class="input-uppercase">
+                                <label for="origin">From (Origin)</label>
+                                <div class="search-select" data-name="origin">
+                                    <input type="text" id="origin" class="search-select-input" placeholder="All Origins — type to filter" autocomplete="off">
+                                    <button type="button" class="search-select-clear" aria-label="Clear" tabindex="-1">×</button>
+                                    <div class="search-select-list hidden"></div>
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label for="destination">To (Destination) - Optional</label>
-                                <input type="text" id="destination" placeholder="e.g., DXB, DOH, BKK" maxlength="3" class="input-uppercase">
+                                <label for="destination">To (Destination)</label>
+                                <div class="search-select" data-name="destination">
+                                    <input type="text" id="destination" class="search-select-input" placeholder="All Destinations — type to filter" autocomplete="off">
+                                    <button type="button" class="search-select-clear" aria-label="Clear" tabindex="-1">×</button>
+                                    <div class="search-select-list hidden"></div>
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label for="departure-date">Departure Date - Optional</label>
+                                <label for="departure-date">Departure Date</label>
                                 <input type="date" id="departure-date">
                             </div>
                         </div>
@@ -48,9 +87,14 @@
 
                 <!-- Results -->
                 <div id="search-results" class="results-container hidden">
-                    <h2>Available Flights</h2>
+                    <h2>Available Flights <span id="flights-count" class="results-count"></span></h2>
                     <div id="flights-list" class="flights-grid">
                         <!-- Flights will be inserted here -->
+                    </div>
+                    <div class="load-more-wrap">
+                        <button id="load-more-btn" class="btn btn-primary load-more-btn hidden" type="button" onclick="loadMoreFlights()">
+                            Load More
+                        </button>
                     </div>
                 </div>
 
@@ -164,6 +208,21 @@
             </div>
         </div>
 
+        <!-- Confirm Modal (replaces native confirm()) -->
+        <div id="confirm-modal" class="modal hidden">
+            <div class="modal-content modal-confirm">
+                <h2 id="confirm-title">Confirm</h2>
+                <p id="confirm-message">Are you sure?</p>
+                <div class="confirm-actions">
+                    <button id="confirm-no" type="button" class="btn btn-secondary">Cancel</button>
+                    <button id="confirm-yes" type="button" class="btn btn-danger">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast (replaces native alert()) -->
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
         <!-- Booking Modal -->
         <div id="booking-modal" class="modal hidden">
             <div class="modal-content">
@@ -187,8 +246,28 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="seat-number">Seat Number *</label>
-                        <input type="number" id="seat-number" required placeholder="1" min="1">
+                        <label>Select Seat *</label>
+                        <div class="seat-map-legend">
+                            <span class="legend-item"><span class="legend-box legend-available"></span> Available</span>
+                            <span class="legend-item"><span class="legend-box legend-booked"></span> Booked</span>
+                            <span class="legend-item"><span class="legend-box legend-selected"></span> Selected</span>
+                        </div>
+                        <div class="seat-map-wrapper">
+                            <div class="seat-map-header">
+                                <span class="row-num-placeholder"></span>
+                                <span class="col-label">A</span>
+                                <span class="col-label">B</span>
+                                <span class="col-label">C</span>
+                                <span class="aisle-label"></span>
+                                <span class="col-label">D</span>
+                                <span class="col-label">E</span>
+                                <span class="col-label">F</span>
+                            </div>
+                            <div id="seat-map-rows" class="seat-map-rows">
+                                <div class="seat-map-loading">Loading seat map…</div>
+                            </div>
+                        </div>
+                        <p id="selected-seat-display" class="selected-seat-text">No seat selected</p>
                     </div>
 
                     <button type="submit" class="btn btn-success">Confirm Booking</button>

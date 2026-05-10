@@ -5,9 +5,10 @@ Flight routes for FlightHub API.
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import distinct
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Flight
+from models import Flight, Booking
 from schemas import FlightResponse, FlightListResponse, FlightSearchResponse
 
 router = APIRouter(prefix="/api/flights", tags=["flights"])
@@ -24,23 +25,21 @@ def get_all_flights(
     Get all available flights with optional filters.
     
     Query Parameters:
-    - origin (optional): Filter by origin airport code (e.g., ISB, LHE, KHI)
-    - destination (optional): Filter by destination airport code (e.g., DXB)
+    - origin (optional): Filter by origin city (e.g., Islamabad, Lahore, Karachi)
+    - destination (optional): Filter by destination city (e.g., Dubai)
     - departure_date (optional): Filter by date in YYYY-MM-DD format
     
     Returns:
     - List of flights and count
     """
     query = db.query(Flight)
-    
-    # Apply filters
+
+    # Apply filters (case-insensitive city name match)
     if origin:
-        origin = origin.upper()
-        query = query.filter(Flight.origin == origin)
-    
+        query = query.filter(Flight.origin.ilike(origin))
+
     if destination:
-        destination = destination.upper()
-        query = query.filter(Flight.destination == destination)
+        query = query.filter(Flight.destination.ilike(destination))
     
     if departure_date:
         try:
@@ -72,8 +71,8 @@ def search_flights(
     Search flights by origin, destination, and departure date.
     
     Query Parameters:
-    - origin (required): Origin airport code (e.g., ISB, LHE, KHI)
-    - destination (required): Destination airport code (e.g., DXB, DOH)
+    - origin (required): Origin city (e.g., Islamabad, Lahore, Karachi)
+    - destination (required): Destination city (e.g., Dubai, Doha)
     - departure_date (required): Date in YYYY-MM-DD format
     
     Returns:
@@ -98,13 +97,10 @@ def search_flights(
             detail="Invalid departure_date format. Use YYYY-MM-DD"
         )
     
-    # Search flights
-    origin = origin.upper()
-    destination = destination.upper()
-    
+    # Search flights (case-insensitive city name match)
     flights = db.query(Flight).filter(
-        Flight.origin == origin,
-        Flight.destination == destination,
+        Flight.origin.ilike(origin),
+        Flight.destination.ilike(destination),
         Flight.departure_date == date_obj
     ).order_by(Flight.departure_time).all()
     
@@ -118,6 +114,36 @@ def search_flights(
     return {
         "results": flights,
         "count": len(flights)
+    }
+
+
+@router.get("/options")
+def get_flight_options(db: Session = Depends(get_db)):
+    """Return all unique origins, destinations, and departure dates present in the flights table."""
+    origins = [r[0] for r in db.query(distinct(Flight.origin)).order_by(Flight.origin).all()]
+    destinations = [r[0] for r in db.query(distinct(Flight.destination)).order_by(Flight.destination).all()]
+    dates = [str(r[0]) for r in db.query(distinct(Flight.departure_date)).order_by(Flight.departure_date).all()]
+    return {"origins": origins, "destinations": destinations, "dates": dates}
+
+
+@router.get("/{flight_id}/seats")
+def get_flight_seats(flight_id: int, db: Session = Depends(get_db)):
+    """Return total seats and the list of confirmed booked seat numbers for a flight."""
+    flight = db.query(Flight).filter(Flight.id == flight_id).first()
+    if not flight:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Flight {flight_id} not found")
+
+    booked = db.query(Booking.seat_number).filter(
+        Booking.flight_id == flight_id,
+        Booking.status == "CONFIRMED"
+    ).all()
+
+    return {
+        "flight_id": flight_id,
+        "total_seats": flight.total_seats,
+        "available_seats": flight.available_seats,
+        "booked_seats": [row.seat_number for row in booked]
     }
 
 

@@ -4,7 +4,7 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const API_BASE_URL = process.env.API_URL || 'http://localhost:8001/api';
+const API_BASE_URL = process.env.API_URL || 'http://localhost:8000/api';
 
 // Middleware
 app.use(cors());
@@ -51,6 +51,30 @@ app.get('/api/flights/search', async (req, res) => {
         res.status(response.status).json(data);
     } catch (error) {
         console.error('Error searching flights:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/flights/options
+app.get('/api/flights/options', async (req, res) => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/flights/options`);
+        const data = await response.json();
+        res.status(response.status).json(data);
+    } catch (error) {
+        console.error('Error fetching flight options:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /api/flights/:id/seats
+app.get('/api/flights/:id/seats', async (req, res) => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/flights/${req.params.id}/seats`);
+        const data = await response.json();
+        res.status(response.status).json(data);
+    } catch (error) {
+        console.error('Error fetching flight seats:', error);
         res.status(500).json({ error: error.message });
     }
 });

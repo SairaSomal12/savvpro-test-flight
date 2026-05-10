@@ -13,8 +13,8 @@ class Flight(Base):
     __tablename__ = "flights"
 
     id = Column(Integer, primary_key=True, index=True)
-    origin = Column(String(3), nullable=False, index=True)  # Airport code
-    destination = Column(String(3), nullable=False, index=True)  # Airport code
+    origin = Column(String(100), nullable=False, index=True)  # City name
+    destination = Column(String(100), nullable=False, index=True)  # City name
     departure_date = Column(Date, nullable=False, index=True)
     departure_time = Column(Time, nullable=False)
     duration_minutes = Column(Integer, nullable=False)
@@ -27,7 +27,7 @@ class Flight(Base):
     bookings = relationship("Booking", back_populates="flight", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Flight {self.origin}-{self.destination} {self.departure_datetime}>"
+        return f"<Flight {self.origin}->{self.destination} {self.departure_date} {self.departure_time}>"
 
 
 class Booking(Base):

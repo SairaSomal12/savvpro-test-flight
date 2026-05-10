@@ -1,259 +1,228 @@
-# ✈️ FlightHub - Flight Search & Booking System
+# FlightHub — Flight Search & Booking System
 
-A full-stack flight search and booking application built with **FastAPI** (backend) and **Express.js** (frontend).
+A full-stack internal tool for a small travel agency. Staff can search flights, book seats, view bookings, and cancel them. Built with **FastAPI** (backend) + **Express.js** (frontend) on **SQLite**.
 
-## 📋 Project Structure
+---
+
+## Project Structure
 
 ```
 savvpro-test-flight/
-├── backend/              # FastAPI backend
-│   ├── models.py         # SQLAlchemy ORM models
-│   ├── schemas.py        # Pydantic validation schemas
-│   ├── database.py       # Database configuration
-│   ├── init_db.py        # Database seeding script
-│   ├── main.py           # FastAPI application
+├── backend/                  # FastAPI backend
+│   ├── main.py               # FastAPI app + CORS + router registration
+│   ├── models.py             # SQLAlchemy ORM models (Flight, Booking)
+│   ├── schemas.py            # Pydantic request/response schemas
+│   ├── database.py           # SQLite engine + session factory
+│   ├── init_db.py            # Database seeding script
 │   ├── routers/
-│   │   ├── flights.py    # Flight endpoints
-│   │   └── bookings.py   # Booking endpoints
-│   ├── requirements.txt  # Python dependencies
-│   └── flighthub.db      # SQLite database (auto-created)
+│   │   ├── flights.py        # /api/flights endpoints
+│   │   └── bookings.py       # /api/bookings endpoints
+│   ├── requirements.txt      # Python dependencies
+│   └── flighthub.db          # SQLite database (auto-created)
 │
-├── frontend/             # Express.js frontend
-│   ├── server.js         # Express server
-│   ├── package.json      # Node.js dependencies
+├── Frontend/                 # Express.js frontend
+│   ├── server.js             # Express server (serves UI + proxies API)
+│   ├── package.json          # Node dependencies
 │   └── public/
-│       ├── index.html    # Main UI
-│       ├── app.js        # Client-side JavaScript
-│       └── style.css     # Styling
+│       ├── index.html        # Main UI
+│       ├── app.js            # Client-side logic
+│       └── style.css         # Styling
 │
-├── ARCHITECTURE.md       # Design decisions and API documentation
-├── README.md             # This file
-└── .gitignore            # Git ignore rules
+├── ARCHITECTURE.md           # Data model, API contract, design decisions
+└── README.md                 # You are here
 ```
 
 ---
 
-## 🚀 Quick Start
+## Prerequisites
 
-### Prerequisites
 - **Python 3.8+**
 - **Node.js 14+**
-- **SQLite3** (bundled with Python)
+- SQLite ships with Python — nothing to install separately
 
-### Step 1: Backend Setup
+---
+
+## Setup & Run
+
+The app needs **two terminals** — one for the backend, one for the frontend.
+
+### 1. Backend
 
 ```bash
 cd backend
 
-# Create virtual environment
+# Create and activate a virtual environment
 python -m venv venv
-.\venv\Scripts\Activate.ps1  # Windows
-# OR
-source venv/bin/activate     # macOS/Linux
+
+# Windows (PowerShell)
+.\venv\Scripts\Activate.ps1
+# macOS / Linux
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Initialize database with sample data
+# Seed the database (idempotent — skips if data already exists)
 python init_db.py
 
-# Start backend server
+# Start the API server
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**Backend runs on:** `http://localhost:8000`
-**API Docs:** `http://localhost:8000/docs`
+- Backend listens on **http://localhost:8000**
+- Interactive API docs (Swagger): **http://localhost:8000/docs**
 
-### Step 2: Frontend Setup (in a new terminal)
+### 2. Frontend (new terminal)
 
 ```bash
-cd frontend
+cd Frontend
 
-# Install dependencies
 npm install
-
-# Start frontend server
 npm start
 ```
 
-**Frontend runs on:** `http://localhost:3000`
+- Frontend served on **http://localhost:3000**
+- Open that URL in a browser to use the app
+- The Express server proxies `/api/*` calls to the FastAPI backend, so the browser only ever talks to `localhost:3000`
+
+To override the backend URL the proxy targets, set `API_URL` (default `http://localhost:8000/api`):
+
+```bash
+API_URL=http://localhost:8000/api npm start
+```
 
 ---
 
-## ✨ Features
-
-### 🔍 Flight Search
-- Search flights by origin, destination, and departure date
-- View all available flights with filtering options
-- Display: origin, destination, date, time, duration, price, seats
-
-### ✈️ Flight Booking
-- Select any available flight
-- Book seats with passenger details (name, passport)
-- Auto-generated unique booking reference (e.g., BK-ABC123)
-- Real-time seat availability
-
-### 📖 View Bookings
-- Search by booking reference or passenger name
-- View complete booking and flight details
-- Status tracking (CONFIRMED / CANCELLED)
-
-### ❌ Cancel Bookings
-- Cancel any confirmed booking
-- Automatic refund calculation
-- Seat restoration
-
----
-
-## 📡 API Endpoints
+## API Endpoints
 
 **Base URL:** `http://localhost:8000/api`
 
 ### Flights
-```
-GET /flights                                    # List all flights
-GET /flights/search?origin=ISB&destination=LHE&departure_date=2026-05-15
-GET /flights/{id}                               # Get flight by ID
-```
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/flights` | List all flights; optional filters: `origin`, `destination`, `departure_date` |
+| `GET` | `/flights/search` | Strict search — all three params required |
+| `GET` | `/flights/options` | Distinct origins, destinations, and dates (powers UI dropdowns) |
+| `GET` | `/flights/{id}` | Single flight by ID |
+| `GET` | `/flights/{id}/seats` | Seat availability + list of confirmed booked seats |
 
 ### Bookings
-```
-POST /bookings                                  # Create booking
-GET /bookings/{booking_reference}               # Get booking
-GET /bookings/passenger/{passenger_name}        # Get bookings by passenger
-DELETE /bookings/{booking_reference}            # Cancel booking
-```
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/bookings` | Create a booking — body: `flight_id`, `passenger_name`, `passport_number`, `seat_number` |
+| `GET` | `/bookings` | List all bookings |
+| `GET` | `/bookings/{booking_reference}` | Single booking by reference (e.g. `BK-ABC123`) |
+| `GET` | `/bookings/passenger/{name}` | All bookings for a passenger (case-insensitive partial match) |
+| `DELETE` | `/bookings/{booking_reference}` | Cancel a booking; restores the seat |
 
----
+### Quick API smoke test (cURL)
 
-## 🌍 Sample Data
-
-**180+ flights** across 2 weeks (May 15-24, 2026)
-
-### Domestic Routes (Pakistan)
-- ISB ↔ LHE (Islamabad ↔ Lahore)
-- LHE ↔ KHI (Lahore ↔ Karachi)  
-- KHI ↔ ISB (Karachi ↔ Islamabad)
-- ISB ↔ PEW (Islamabad ↔ Peshawar)
-- MUL ↔ KHI (Multan ↔ Karachi)
-
-### International Routes
-- KHI → DXB (Dubai)
-- LHE → DOH (Doha)
-- ISB → JED (Jeddah)
-- KHI → BKK (Bangkok)
-- Plus return flights
-
-**Pricing:** Rs. 3,200 - 24,500
-
----
-
-## 🧪 Testing
-
-### Web UI
-1. Visit `http://localhost:3000`
-2. Search flights
-3. Click "Book Now"
-4. Enter details and confirm
-5. View bookings in the "My Bookings" tab
-
-### cURL Examples
-
-**Search flights:**
 ```bash
-curl "http://localhost:8000/api/flights/search?origin=ISB&destination=LHE&departure_date=2026-05-15"
-```
+# Search for flights
+curl "http://localhost:8000/api/flights/search?origin=Islamabad&destination=Lahore&departure_date=2026-05-15"
 
-**Create booking:**
-```bash
+# Create a booking
 curl -X POST http://localhost:8000/api/bookings \
   -H "Content-Type: application/json" \
   -d '{"flight_id": 1, "passenger_name": "John Doe", "passport_number": "AB123456", "seat_number": 5}'
-```
 
-**Get booking:**
-```bash
+# Get a booking (use the reference returned above)
 curl http://localhost:8000/api/bookings/BK-ABC123
-```
 
-**Cancel booking:**
-```bash
+# Cancel
 curl -X DELETE http://localhost:8000/api/bookings/BK-ABC123
 ```
 
 ---
 
-## 🗄️ Database
+## Sample Data
 
-### Reset Database
+`python init_db.py` seeds 170 flights spanning 10 days (15–24 May 2026) on these routes:
+
+**Domestic (Pakistan):** Islamabad ↔ Lahore, Lahore ↔ Karachi, Karachi ↔ Islamabad, Islamabad ↔ Peshawar, Lahore ↔ Multan, Karachi ↔ Quetta, Multan → Karachi.
+
+**International:** Karachi ↔ Dubai, Lahore ↔ Doha, Islamabad → Doha, Karachi ↔ Bangkok, Lahore → Dubai, Islamabad → Jeddah.
+
+Prices range from **Rs. 3,200** (domestic short-haul) to **Rs. 24,500** (international long-haul). Seat capacities range from 90 to 220.
+
+### Reset the database
+
 ```bash
 cd backend
-rm flighthub.db           # Delete old database
-python init_db.py         # Reinitialize with fresh data
+rm flighthub.db        # Windows: del flighthub.db
+python init_db.py
 ```
 
 ---
 
-## 🔒 Design Decisions
+## Assumptions
 
-### Overbooking Prevention
-- **No overbooking allowed**
-- Returns `400 Bad Request` when no seats available
-- Returns `409 Conflict` if seat already booked
+The task left a few details open. Here's what was decided and why:
 
-### Architecture Highlights
-- Separate `departure_date` and `departure_time` columns
-- Transaction-based seat reservation
-- Unique booking references (BK-XXXXXX format)
-- Automatic refund on cancellation
+1. **No overbooking allowed.** When the last seat is taken, `POST /bookings` returns `409 Conflict` with *"This flight is fully booked. No seats are available."* Safer for a travel agency than allowing waitlists, and unambiguous to test. Implemented as an atomic compare-and-decrement on `flights.available_seats` so concurrent bookings can't both claim the last seat.
 
-See **ARCHITECTURE.md** for detailed design documentation.
+2. **Cancellation is a soft delete.** `DELETE /bookings/{ref}` flips `status` from `CONFIRMED` to `CANCELLED` and stamps `cancelled_at` — the booking row is preserved for audit. Seat availability increments back, capped at `total_seats` to guard against double-cancel replays.
+
+3. **Booking references are server-generated** in the format `BK-XXXXXX` (6 alphanumeric chars). The `booking_reference` column has a `UNIQUE` constraint as the safety net.
+
+4. **Cities are stored as full names** (e.g. `Islamabad`, `Lahore`), not IATA codes. Search is case-insensitive (`ILIKE`).
+
+5. **Passenger lookup is a partial match** — `GET /bookings/passenger/John` matches *John Doe*, *Johnny Smith*, etc. Trade-off chosen for staff usability over strict matching.
+
+6. **No authentication.** This is an internal staff tool per the brief. Adding auth would be a fast follow-up — every endpoint already runs through a single dependency-injected DB session.
+
+7. **No payments / no waitlist / no email confirmation.** Bookings are confirmed instantly. Refunds are computed but not actually transferred — the cancellation response includes `refund_amount: <price_per_seat>` for the UI to display.
+
+8. **Date and time stored separately.** `departure_date DATE` + `departure_time TIME` — makes calendar filtering by date trivial without timezone arithmetic. Timestamps (`booked_at`, `cancelled_at`) are stored in UTC; the frontend converts to the viewer's local timezone for display.
+
+9. **Pagination is client-side.** The flight list endpoint returns all matches in one response; the UI reveals 9 cards at a time via a "Load More" button. Fine at the 170-row scale of the sample data; would move to server-side `limit`/`offset` if the dataset grew.
+
+10. **The frontend Express server only serves static assets and proxies the API.** No server-side rendering. The browser fetches `/api/*` and Express forwards to FastAPI — keeps CORS simple and lets the backend stay deployment-agnostic.
+
+See **ARCHITECTURE.md** for the full data model, schema details, and HTTP status code matrix.
 
 ---
 
-## 📚 Tech Stack
+## Tech Stack
 
 | Layer | Technology | Version |
 |-------|-----------|---------|
 | Backend | FastAPI | 0.104.1 |
 | ORM | SQLAlchemy | 2.0.23 |
+| Validation | Pydantic | 2.5.0 |
 | Database | SQLite | (built-in) |
-| Frontend | Express.js | 4.18.2 |
+| Frontend server | Express.js | 4.18.2 |
+| UI | Vanilla HTML/CSS/JS | — |
 | Runtime | Node.js | 14+ |
 
 ---
 
-## ⚠️ Troubleshooting
+## Troubleshooting
 
-**Backend connection refused:**
-- Ensure backend is running on `http://localhost:8000`
-- Check CORS is enabled (default: yes)
+**Frontend can't reach backend:**
+- Make sure the backend is actually listening on port 8000 (`uvicorn` output should say `Uvicorn running on http://0.0.0.0:8000`)
+- If you changed the backend port, set `API_URL` when starting the frontend
 
 **Port already in use:**
-- Backend: `lsof -i :8000` or `netstat -ano | findstr :8000`
-- Frontend: `lsof -i :3000` or `netstat -ano | findstr :3000`
+- Backend: `netstat -ano | findstr :8000` (Windows) or `lsof -i :8000` (macOS/Linux)
+- Frontend: `netstat -ano | findstr :3000` or `lsof -i :3000`
 
-**Database errors:**
-- Delete `flighthub.db` and run `python init_db.py`
+**Database is out of sync (e.g. seat counts don't match bookings):**
 
----
+This usually happens after raw SQL deletes that bypass the application's seat-reservation logic. Resync with:
 
-## 📖 Documentation
+```sql
+UPDATE flights
+SET available_seats = total_seats - (
+    SELECT COUNT(*) FROM bookings
+    WHERE bookings.flight_id = flights.id AND bookings.status = 'CONFIRMED'
+);
+```
 
-- **ARCHITECTURE.md** - Data model, API design, ambiguity resolutions
-- **USER_GUIDE.md** - How to use the application with screenshots
-- **AI_USAGE.md** - AI tool usage and corrections
-
----
-
-## 📝 Notes
-
-- **No Authentication:** Internal staff tool
-- **No Payments:** Bookings confirmed instantly
-- **IATA Codes:** ISB, LHE, KHI, DXB, DOH, BKK, JED, PEW, MUL, QTA
+Or just delete `flighthub.db` and re-run `python init_db.py`.
 
 ---
 
-## 📄 License
+## License
 
 ISC

@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from database import get_db
 from models import Flight, Booking
 from schemas import BookingCreate, BookingResponse, BookingDetailResponse, BookingListResponse, AllBookingsResponse, CancellationResponse
@@ -48,36 +49,44 @@ def create_booking(booking: BookingCreate, db: Session = Depends(get_db)):
             detail=f"Flight with ID {booking.flight_id} not found"
         )
     
-    # Check if seat number is valid
-    if booking.seat_number < 1 or booking.seat_number > flight.total_seats:
+    # Validate seat number is within the aircraft's range
+    if not (1 <= booking.seat_number <= flight.total_seats):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Seat number must be between 1 and {flight.total_seats}"
         )
-    
-    # Check if flight has available seats (overbooking prevention)
-    if flight.available_seats <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No seats available on this flight"
-        )
-    
-    # Check if seat is already booked
-    existing_booking = db.query(Booking).filter(
+
+    # Reject immediately if the specific seat is already confirmed
+    # (fast path — avoids touching available_seats for an obviously taken seat)
+    if db.query(Booking).filter(
         Booking.flight_id == booking.flight_id,
         Booking.seat_number == booking.seat_number,
         Booking.status == "CONFIRMED"
-    ).first()
-    
-    if existing_booking:
+    ).first():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Seat {booking.seat_number} is already booked on this flight"
+            detail=f"Seat {booking.seat_number} is already booked. Please choose a different seat."
         )
-    
-    # Create booking with unique reference
+
+    # Atomic capacity guard: decrement only succeeds when available_seats > 0.
+    # The WHERE clause makes this a compare-and-decrement — immune to race conditions
+    # because SQLite serialises writes and the condition is evaluated inside the UPDATE.
+    rows_updated = db.query(Flight).filter(
+        Flight.id == booking.flight_id,
+        Flight.available_seats > 0
+    ).update(
+        {"available_seats": Flight.available_seats - 1},
+        synchronize_session="fetch"
+    )
+
+    if rows_updated == 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This flight is fully booked. No seats are available."
+        )
+
+    # Create the booking record
     booking_reference = generate_booking_reference()
-    
     new_booking = Booking(
         booking_reference=booking_reference,
         flight_id=booking.flight_id,
@@ -86,14 +95,25 @@ def create_booking(booking: BookingCreate, db: Session = Depends(get_db)):
         seat_number=booking.seat_number,
         status="CONFIRMED"
     )
-    
-    # Decrement available seats
-    flight.available_seats -= 1
-    
     db.add(new_booking)
-    db.commit()
+
+    try:
+        db.commit()
+    except Exception:
+        # Last-resort catch: two requests beat all checks simultaneously.
+        # Roll back the seat decrement we already applied and surface a clear error.
+        db.rollback()
+        db.query(Flight).filter(Flight.id == booking.flight_id).update(
+            {"available_seats": Flight.available_seats + 1},
+            synchronize_session=False
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Seat {booking.seat_number} was just taken by another booking. Please select a different seat."
+        )
+
     db.refresh(new_booking)
-    
     return new_booking
 
 
@@ -241,9 +261,11 @@ def cancel_booking(booking_reference: str, db: Session = Depends(get_db)):
     booking.status = "CANCELLED"
     booking.cancelled_at = datetime.utcnow()
 
-    # Atomic increment so the DB column is updated in-place, not read-modify-write
-    db.query(Flight).filter(Flight.id == booking.flight_id).update(
-        {"available_seats": Flight.available_seats + 1}
+    # Capped atomic increment: available_seats can never exceed total_seats,
+    # guarding against double-cancel replays or data inconsistencies.
+    db.execute(
+        text("UPDATE flights SET available_seats = MIN(available_seats + 1, total_seats) WHERE id = :id"),
+        {"id": booking.flight_id}
     )
 
     db.commit()

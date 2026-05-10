@@ -240,13 +240,18 @@ def cancel_booking(booking_reference: str, db: Session = Depends(get_db)):
     # Update booking status
     booking.status = "CANCELLED"
     booking.cancelled_at = datetime.utcnow()
-    
-    # Increment available seats
-    flight = booking.flight
-    flight.available_seats += 1
-    
+
+    # Atomic increment so the DB column is updated in-place, not read-modify-write
+    db.query(Flight).filter(Flight.id == booking.flight_id).update(
+        {"available_seats": Flight.available_seats + 1}
+    )
+
     db.commit()
-    
+
+    # Reload flight to get the committed available_seats value for the response
+    db.refresh(booking)
+    flight = db.query(Flight).filter(Flight.id == booking.flight_id).first()
+
     return {
         "message": "Booking cancelled successfully",
         "booking_reference": booking.booking_reference,
